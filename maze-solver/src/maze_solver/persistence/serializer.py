@@ -1,57 +1,49 @@
-# persistence/file_format.py
+#persistence/serializer.py
 
-'''
-To more easily represent the maze, let's use a byte.
-The entire data for each string can be represented by a byte.
-We will do some bitwise operations to shift the bits
-so that the role and the borders can be represented.
-Let's start by creating magic numbers.
-Magic numbers are what help identify unique file types.
-'''
-
-from dataclasses import dataclass
-
-import struct
-from typing import BinaryIO
 import array
+import pathlib
+from typing import Iterator
 
-MAGIC_NUMBER: bytes = b"MAZE"
+from maze_solver.models.border import Border
+from maze_solver.models.role import Role
+from maze_solver.models.square import Square
+from maze_solver.persistence.file_format import FileBody, FileHeader
 
-# [77, 65, 90, 69]
+FORMAT_VERSION: int = 1
+
+# you call dump with the maze and the bath to convert to a .maze binary
+
+def dump_squares(width: int, height: int, squares: tuple[Square, ...],
+                 path: pathlib.Path,) -> None:
+    header, body = serialize(width, height, squares)
+    with path.open(mode="wb") as file:
+        header.write(file)
+        body.write(file)
+
+def load_squares(path: pathlib.Path) -> Iterator[Square]:
+    with path.open("rb") as file:
+        header = FileHeader.read(file)
+        if header.format_version != FORMAT_VERSION:
+            raise ValueError("File version unsupported")
+        body = FileBody.read(header, file)
+        return deserialize(header, body)
 
 
-@dataclass(frozen=True)
-class FileHeader:
-    format_version: int
-    width: int
-    height: int
+def serialize(width: int, height: int, 
+              squares:tuple[Square, ...]) -> tuple[FileHeader, FileBody]:
+    header = FileHeader(FORMAT_VERSION, width, height)
+    body = FileBody(array.array("B", map(compress, squares)))
+    return header, body
 
-# when there is no instance, we can use class methods
-# to act on a class instead of an object
+def deserialize(header: FileHeader, body: FileBody) -> Iterator[Square]:
+    for index, square_value in enumerate(body.square_values):
+        row, column = divmod(index, header.width)
+        border, role = decompress(square_value)
+        yield Square(index, row, column, border, role)
 
-    @classmethod
-    def read(cls, file:BinaryIO) -> "FileHeader":
-        assert (
-            file.read(len(MAGIC_NUMBER)) == MAGIC_NUMBER
-        ), "FILE TYPE UNKNOWN"
-        format_version, = struct.unpack("B", file.read(1))
-        width, height = struct.unpack("<2I", file.read(2*4))
-        return cls(format_version, width, height)
+def compress(square: Square) -> int:
+    return (square.role << 4) | square.border.value
 
-    def write(self, file:BinaryIO) -> None:
-        file.write(MAGIC_NUMBER)
-        file.write(struct.packd("B", self.format_version))
-        file.write(struct.pack("<2I", self.width, self.height))
 
-@dataclass(frozen=True)
-class FileBody:
-    square_values: array.array
-
-    @classmethod
-    def read(cls, header: FileHeader, file: BinaryIO) -> "FileBody":
-        return cls(
-            array.array("B", file.read(header.width * header.height))
-        )
-    
-    def write(self, file: BinaryIO) -> None:
-        file.write(self.square_values.tobytes())
+def decompress(square_value: int) -> tuple[Border, Role]:
+    return Border(square_value & 0xf), Role(square_value >> 4)
