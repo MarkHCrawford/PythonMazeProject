@@ -99,6 +99,15 @@ def decompose(border: Border, top_left: Point, square_size: int) -> Primitive:
             ]
         )
     
+    if border is Border.BOTTOM | Border.LEFT:
+        return Polyline(
+            [
+                bottom_right,
+                bottom_left,
+                top_left,
+            ]
+        )
+
     if border is Border.LEFT | Border.RIGHT:
         return DisjointLines([left, right])
     

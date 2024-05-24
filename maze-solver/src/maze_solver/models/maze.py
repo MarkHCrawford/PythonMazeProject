@@ -3,9 +3,15 @@
 from dataclasses import dataclass
 from functools import cached_property
 from typing import Iterator
+from pathlib import Path
 
 from maze_solver.models.role import Role
 from maze_solver.models.square import Square
+from maze_solver.persistence.serializer import (
+    dump_squares,
+    load_squares,
+)
+
 
 # frozen = true makes the class immutable
 @dataclass(frozen=True)
@@ -16,6 +22,14 @@ class Maze:
 
 # To cache things later, a tuple is required instead of a list, because of its immutability
 
+    @classmethod
+    def load(cls, path: Path) -> "Maze":
+        return Maze(tuple(load_squares(path)))
+
+    def dump(self, path: Path) -> None:
+        dump_squares(self.width, self.height, self.squares, path)
+
+        
 # validation after initialization
     def __post_init__(self) -> None:
         validate_indices(self)
@@ -67,11 +81,13 @@ def validate_rows_columns(maze: Maze) -> None:
             assert square.column == x, "square.column incorrect"
 
 def validate_entrance(maze: Maze) -> None:
-    assert 1  == sum(
+    assert 1 == sum(
         1 for square in maze if square.role is Role.ENTRANCE
-    ), "Only one entrance allowed"
+    ), "ERROR: ONE ENTRANCE ALLOWED"
+
 
 def validate_exit(maze: Maze) -> None:
     assert 1 == sum(
         1 for square in maze if square.role is Role.EXIT
     ), "Only one exit allowed"
+
